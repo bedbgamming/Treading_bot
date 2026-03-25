@@ -1,7 +1,7 @@
 *.pyc
-__pycache__/
-trading_data.db
-trading_bot.log
+__pycache__
+/tmp/
 *.db
 *.log
+.env
 .DS_Store
