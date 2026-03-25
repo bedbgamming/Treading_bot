@@ -1,0 +1,8 @@
+trading-bot-railway/
+├── trading_bot.py
+├── requirements.txt
+├── railway.json
+├── nixpacks.toml
+├── .gitignore
+├── README.md
+└── Procfile
