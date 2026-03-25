@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-"""
-ULTIMATE TRADING BOT - WITH TELEGRAM & GOOGLE AI
-"""
+# trading_bot.py - Railway Deploy Ready
 
 import os
 import sys
@@ -11,37 +7,45 @@ import time
 import sqlite3
 import threading
 import requests
-import json
 import logging
 from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
 # ============================================================================
-# CONFIGURATION - KEYS ADDED
+# READ KEYS FROM ENVIRONMENT (SET IN RAILWAY DASHBOARD)
 # ============================================================================
 
-# Telegram Keys
-TELEGRAM_TOKEN = "8789790689:AAGfkoE1lcjn-97IxXMbiM4fL15IsA0niTo"
-TELEGRAM_ADMIN_ID = 7890333339
-
-# Google AI Key
-GOOGLE_AI_KEY = "AIzaSyBvUNwz2YaJ1LNAO84OCoQlGYiK2JDIyXI"
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
+TELEGRAM_ADMIN_ID = int(os.environ.get('TELEGRAM_ADMIN_ID', '0'))
+GOOGLE_AI_KEY = os.environ.get('GOOGLE_AI_KEY', '')
 
 # Trading Settings
-PAPER_MODE = True
-INITIAL_CAPITAL = 30000
-RISK_PER_TRADE = 1.0
-MAX_OPEN_TRADES = 2
-ACTIVE_SYMBOLS = ["NIFTY", "BANKNIFTY"]
-MIN_CONFIDENCE = 70
-PREDICTION_INTERVAL = 60
-PROFIT_TARGET_PCT = 2.5
-INITIAL_STOP_ATR = 1.5
-TRAILING_STOP_ATR = 2.0
+PAPER_MODE = os.environ.get('PAPER_MODE', 'True').lower() == 'true'
+INITIAL_CAPITAL = float(os.environ.get('INITIAL_CAPITAL', '30000'))
+RISK_PER_TRADE = float(os.environ.get('RISK_PER_TRADE', '1.0'))
+MAX_OPEN_TRADES = int(os.environ.get('MAX_OPEN_TRADES', '2'))
+PROFIT_TARGET_PCT = float(os.environ.get('PROFIT_TARGET_PCT', '2.5'))
+INITIAL_STOP_ATR = float(os.environ.get('INITIAL_STOP_ATR', '1.5'))
+TRAILING_STOP_ATR = float(os.environ.get('TRAILING_STOP_ATR', '2.0'))
 
-# Database
-DB_FILE = "trading_data.db"
+# Railway uses /tmp for ephemeral storage
+DB_FILE = '/tmp/trading_data.db'
+LOG_FILE = '/tmp/trading_bot.log'
+
+# ============================================================================
+# STARTUP WARNINGS
+# ============================================================================
+
+if not TELEGRAM_TOKEN:
+    print("⚠️ WARNING: TELEGRAM_TOKEN not set in Railway environment!")
+    print("⚠️ Add it in: Railway Dashboard → Variables\n")
+
+if TELEGRAM_ADMIN_ID == 0:
+    print("⚠️ WARNING: TELEGRAM_ADMIN_ID not set in Railway environment!\n")
+
+if not GOOGLE_AI_KEY:
+    print("⚠️ INFO: GOOGLE_AI_KEY not set. AI features disabled.\n")
 
 # ============================================================================
 # LOGGING
@@ -51,7 +55,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('trading_bot.log'),
+        logging.FileHandler(LOG_FILE),
         logging.StreamHandler()
     ]
 )
@@ -71,83 +75,6 @@ except ImportError:
     import numpy as np
     import pandas as pd
     import yfinance as yf
-
-# ============================================================================
-# GOOGLE AI FUNCTIONS
-# ============================================================================
-
-class GoogleAI:
-    def __init__(self, api_key):
-        self.api_key = api_key
-        self.base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
-    
-    def analyze_market(self, symbol, price, rsi, volume, sentiment):
-        """Get AI analysis for market"""
-        try:
-            prompt = f"""
-            Analyze this market data:
-            Symbol: {symbol}
-            Price: ₹{price}
-            RSI: {rsi}
-            Volume: {volume}
-            Market Sentiment: {sentiment}
-            
-            Give trading recommendation (BUY/SELL/HOLD) with confidence score.
-            Also give brief reason.
-            """
-            
-            url = f"{self.base_url}?key={self.api_key}"
-            payload = {
-                "contents": [{
-                    "parts": [{"text": prompt}]
-                }]
-            }
-            
-            response = requests.post(url, json=payload, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                if 'candidates' in data:
-                    text = data['candidates'][0]['content']['parts'][0]['text']
-                    return text
-            return None
-        except Exception as e:
-            logger.error(f"Google AI error: {e}")
-            return None
-    
-    def get_signal(self, symbol, price, rsi, volume):
-        """Get trading signal from AI"""
-        try:
-            prompt = f"""
-            Based on technical indicators:
-            - {symbol} current price: ₹{price}
-            - RSI: {rsi} (30-70 is normal)
-            - Volume: {volume}
-            
-            Should I BUY, SELL, or HOLD? Respond with just one word: BUY, SELL, or HOLD.
-            """
-            
-            url = f"{self.base_url}?key={self.api_key}"
-            payload = {
-                "contents": [{
-                    "parts": [{"text": prompt}]
-                }]
-            }
-            
-            response = requests.post(url, json=payload, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                if 'candidates' in data:
-                    text = data['candidates'][0]['content']['parts'][0]['text'].strip().upper()
-                    if "BUY" in text:
-                        return "BUY"
-                    elif "SELL" in text:
-                        return "SELL"
-            return "HOLD"
-        except:
-            return "HOLD"
-
-# Initialize Google AI
-google_ai = GoogleAI(GOOGLE_AI_KEY) if GOOGLE_AI_KEY != "YOUR_GOOGLE_KEY_HERE" else None
 
 # ============================================================================
 # DATABASE
@@ -171,15 +98,44 @@ def init_db():
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             capital REAL, change REAL, reason TEXT
         )''')
-        conn.execute('''CREATE TABLE IF NOT EXISTS ai_analysis (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol TEXT, analysis TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
         conn.commit()
         conn.close()
-        logger.info("✅ Database initialized")
+        logger.info("✅ Database initialized at /tmp")
 
 init_db()
+
+# ============================================================================
+# GOOGLE AI
+# ============================================================================
+
+class GoogleAI:
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.enabled = bool(api_key and api_key != '')
+        if self.enabled:
+            logger.info("🤖 Google AI Enabled")
+    
+    def get_signal(self, symbol, price, rsi):
+        if not self.enabled:
+            return "HOLD"
+        try:
+            prompt = f"{symbol} price ₹{price}, RSI {rsi:.1f}. BUY, SELL, or HOLD? Reply one word."
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={self.api_key}"
+            payload = {"contents": [{"parts": [{"text": prompt}]}]}
+            response = requests.post(url, json=payload, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if 'candidates' in data:
+                    text = data['candidates'][0]['content']['parts'][0]['text'].strip().upper()
+                    if "BUY" in text:
+                        return "BUY"
+                    elif "SELL" in text:
+                        return "SELL"
+            return "HOLD"
+        except:
+            return "HOLD"
+
+google_ai = GoogleAI(GOOGLE_AI_KEY)
 
 # ============================================================================
 # TRADING STATE
@@ -192,12 +148,11 @@ class TradingState:
         self.capital = INITIAL_CAPITAL
         self.open_trades = []
         self.trade_counter = 0
-        self.active_symbols = ACTIVE_SYMBOLS.copy()
+        self.active_symbols = ["NIFTY", "BANKNIFTY"]
         self.risk_per_trade = RISK_PER_TRADE
-        self.min_confidence = MIN_CONFIDENCE
+        self.min_confidence = 70
         self.start_time = datetime.now()
         self.running = True
-        self.consecutive_losses = 0
         self._load_capital_history()
     
     def _load_capital_history(self):
@@ -287,7 +242,7 @@ def is_market_open():
     return market_open <= now <= market_close
 
 # ============================================================================
-# TRADING STRATEGIES
+# STRATEGIES
 # ============================================================================
 
 class Strategies:
@@ -339,21 +294,17 @@ class Strategies:
         return None
     
     @staticmethod
-    def google_ai_signal(df, last, price):
-        if google_ai and 'RSI' in last:
-            try:
-                signal = google_ai.get_signal(
-                    symbol=last.get('symbol', 'NIFTY'),
-                    price=price,
-                    rsi=last.get('RSI', 50),
-                    volume=last.get('volume', 1000000)
-                )
-                if signal == "BUY":
-                    return ("BUY", 75)
-                elif signal == "SELL":
-                    return ("SELL", 75)
-            except:
-                pass
+    def ai_signal(df, last, price):
+        if google_ai.enabled and 'RSI' in last:
+            signal = google_ai.get_signal(
+                symbol=last.get('symbol', 'NIFTY'),
+                price=price,
+                rsi=last.get('RSI', 50)
+            )
+            if signal == "BUY":
+                return ("BUY", 75)
+            elif signal == "SELL":
+                return ("SELL", 75)
         return None
 
 # ============================================================================
@@ -375,7 +326,7 @@ class PredictionEngine:
                 Strategies.breakout_buy, Strategies.breakout_sell,
                 Strategies.rsi_oversold, Strategies.rsi_overbought,
                 Strategies.moving_average_cross,
-                Strategies.google_ai_signal,
+                Strategies.ai_signal,
             ]
             
             buy_signals = sell_signals = 0
@@ -482,19 +433,19 @@ class TelegramBot:
         self.admin_id = TELEGRAM_ADMIN_ID
         self.offset = 0
         self.session = requests.Session()
+        self.enabled = bool(self.token and self.admin_id != 0)
     
     def send(self, chat_id, text):
-        if not self.token or self.token == "YOUR_BOT_TOKEN_HERE":
-            logger.info(f"📱 Would send: {text[:100]}")
+        if not self.enabled:
             return
         try:
             url = f"https://api.telegram.org/bot{self.token}/sendMessage"
             self.session.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"}, timeout=3)
-        except Exception as e:
-            logger.error(f"Send error: {e}")
+        except:
+            pass
     
     def get_updates(self):
-        if not self.token or self.token == "YOUR_BOT_TOKEN_HERE":
+        if not self.enabled:
             return []
         try:
             url = f"https://api.telegram.org/bot{self.token}/getUpdates"
@@ -529,7 +480,7 @@ class TelegramBot:
         elif cmd_lower == "/signals":
             self.send(chat_id, self.signals_msg())
         elif cmd_lower == "/ai":
-            self.send(chat_id, self.ai_analysis_msg())
+            self.send(chat_id, self.ai_msg())
         elif cmd_lower == "/auto_on":
             state.auto_trading = True
             self.send(chat_id, "✅ Auto trading ON")
@@ -579,13 +530,14 @@ class TelegramBot:
         self.send(chat_id, f"✅ {direction} {symbol} @ ₹{price:.0f}")
     
     def start_msg(self):
+        ai_status = "🟢 Active" if google_ai.enabled else "⚫ Disabled"
         return f"""🤖 <b>TRADING BOT</b>
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚙️ Auto: {'ON' if state.auto_trading else 'OFF'}
 📝 Mode: {'PAPER' if state.paper_mode else 'LIVE'}
 💰 Capital: ₹{state.capital:,.2f}
 📊 Open: {len(state.open_trades)}
-🤖 AI: {'Active' if google_ai else 'Inactive'}
+🤖 Google AI: {ai_status}
 
 <b>Commands:</b>
 /status - System status
@@ -602,31 +554,13 @@ class TelegramBot:
         return """🤖 <b>COMMANDS</b>
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📊 <b>Info</b>
-/start - Menu
-/status - System status
-/balance - Balance
-/pnl - P&L summary
-
-📈 <b>Trading</b>
-/positions - Open trades
-/market - Market data
-/signals - Trading signals
-/ai - AI market analysis
-
-⚙️ <b>Control</b>
-/auto_on - Auto trading ON
-/auto_off - Auto trading OFF
-/mode - Toggle Paper/Live
-
-💼 <b>Manual</b>
-/buy SYM QTY - Buy
-/sell SYM QTY - Sell
-
-❓ <b>Help</b>
-/help - This help"""
+📊 Info: /start, /status, /balance, /pnl
+📈 Trading: /positions, /market, /signals, /ai
+⚙️ Control: /auto_on, /auto_off, /mode
+💼 Manual: /buy NIFTY 1, /sell NIFTY 1"""
     
     def status_msg(self):
+        ai_status = "Active" if google_ai.enabled else "Inactive"
         return f"""📊 STATUS
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Auto: {'ON' if state.auto_trading else 'OFF'}
@@ -634,7 +568,7 @@ Mode: {'PAPER' if state.paper_mode else 'LIVE'}
 Capital: ₹{state.capital:,.2f}
 Risk: {state.risk_per_trade}%
 Open: {len(state.open_trades)}
-AI: {'Active' if google_ai else 'Inactive'}"""
+AI: {ai_status}"""
     
     def balance_msg(self):
         pnl = state.capital - INITIAL_CAPITAL
@@ -667,12 +601,10 @@ Trades: {state.trade_counter}"""
     
     def market_msg(self):
         msg = f"📈 MARKET\n━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        for sym in ACTIVE_SYMBOLS:
+        for sym in ["NIFTY", "BANKNIFTY"]:
             price = get_live_price(sym)
             if price:
                 msg += f"\n{sym}: ₹{price:,.0f}"
-            else:
-                msg += f"\n{sym}: N/A"
         return msg
     
     def signals_msg(self):
@@ -680,7 +612,7 @@ Trades: {state.trade_counter}"""
             return "🎯 SIGNALS\n━━━━━━━━━━━━━━━━━━━━━━━━━\n\nMarket Closed"
         msg = "🎯 SIGNALS\n━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         found = False
-        for sym in ACTIVE_SYMBOLS:
+        for sym in ["NIFTY", "BANKNIFTY"]:
             df = get_historical_data(sym)
             if df:
                 pred = predictor.predict(sym, df)
@@ -692,23 +624,26 @@ Trades: {state.trade_counter}"""
             msg += "\nNo strong signals"
         return msg
     
-    def ai_analysis_msg(self):
-        if not google_ai:
-            return "🤖 GOOGLE AI\n━━━━━━━━━━━━━━━━━━━━━━━━━\n\nAI not configured"
+    def ai_msg(self):
+        if not google_ai.enabled:
+            return "🤖 GOOGLE AI\n━━━━━━━━━━━━━━━━━━━━━━━━━\n\nAI not configured.\nSet GOOGLE_AI_KEY in Railway dashboard."
         
         msg = "🤖 GOOGLE AI ANALYSIS\n━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        for sym in ACTIVE_SYMBOLS:
+        for sym in ["NIFTY", "BANKNIFTY"]:
             price = get_live_price(sym)
             if price:
                 df = get_historical_data(sym)
                 rsi = df['RSI'].iloc[-1] if df is not None else 50
-                analysis = google_ai.analyze_market(sym, price, rsi, 1000000, "Neutral")
-                if analysis:
-                    msg += f"\n{sym}:\n{analysis[:200]}...\n"
+                signal = google_ai.get_signal(sym, price, rsi)
+                emoji = "🟢" if signal == "BUY" else "🔴" if signal == "SELL" else "⚪"
+                msg += f"\n{emoji} {sym}: {signal}"
         return msg
     
     def run(self):
-        logger.info(f"🤖 Bot Started | Capital: ₹{state.capital:,.2f} | AI: {'Active' if google_ai else 'Inactive'}")
+        logger.info(f"🤖 Bot Started | Capital: ₹{state.capital:,.2f}")
+        logger.info(f"🤖 Telegram: {'Active' if self.enabled else 'Inactive'}")
+        logger.info(f"🤖 Google AI: {'Active' if google_ai.enabled else 'Inactive'}")
+        
         while state.running:
             try:
                 updates = self.get_updates()
@@ -747,13 +682,13 @@ class AutoEngine:
         while state.running:
             try:
                 if state.auto_trading and is_market_open():
-                    for sym in ACTIVE_SYMBOLS:
+                    for sym in ["NIFTY", "BANKNIFTY"]:
                         df = get_historical_data(sym)
                         if df:
                             pred = predictor.predict(sym, df)
                             if pred and pred['confidence'] >= state.min_confidence:
                                 self._maybe_trade(pred)
-                time.sleep(PREDICTION_INTERVAL)
+                time.sleep(60)
             except Exception as e:
                 logger.error(f"Pred error: {e}")
                 time.sleep(5)
@@ -822,18 +757,19 @@ class AutoEngine:
 def main():
     print("""
 ╔═══════════════════════════════════════════════════════════════════╗
-║     TRADING BOT - WITH TELEGRAM & GOOGLE AI                       ║
+║     TRADING BOT - RAILWAY DEPLOY READY                           ║
 ║     =====================================                        ║
-║     ✅ Telegram Commands                                         ║
-║     ✅ Google AI Integration                                     ║
-║     ✅ Auto Trading                                              ║
-║     ✅ Capital Auto-Update                                       ║
+║     ✅ Ready for Railway Deployment                              ║
+║     ✅ No Hardcoded Keys                                         ║
+║     ✅ Environment Variables Only                                ║
+║     ✅ 24/7 Running on Railway                                   ║
 ╚═══════════════════════════════════════════════════════════════════╝
     """)
     
     logger.info(f"💰 Capital: ₹{state.capital:,.2f}")
-    logger.info(f"🤖 Google AI: {'Active' if google_ai else 'Inactive'}")
-    logger.info(f"📡 Telegram Bot: {'Active' if TELEGRAM_TOKEN != 'YOUR_BOT_TOKEN_HERE' else 'Inactive'}")
+    logger.info(f"📡 Telegram: {'✅ Configured' if TELEGRAM_TOKEN else '❌ Missing'}")
+    logger.info(f"🤖 Google AI: {'✅ Configured' if GOOGLE_AI_KEY else '❌ Missing'}")
+    logger.info("📌 Set missing keys in Railway: Dashboard → Variables\n")
     
     # Start auto engine
     engine = AutoEngine()
